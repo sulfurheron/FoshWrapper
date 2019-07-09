@@ -113,7 +113,7 @@ class FoshWrapper(object):
 
         #find out any IoT device
         for d in devices:
-            if d['name'].startswith(device_name):
+            if d['name'] and d['name'].startswith(device_name):
                 return self.connect(d['address'])
 
     def connect(self, address = ''):
