@@ -109,7 +109,8 @@ class FoshWrapper(object):
             raise e
 
         if not connect:
-            return devices
+            target_devices = [d for d in devices if d['name'] and d['name'].startswith(device_name)]
+            return target_devices
 
         #find out any IoT device
         for d in devices:
