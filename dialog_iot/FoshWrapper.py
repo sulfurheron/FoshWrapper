@@ -84,12 +84,7 @@ class FoshWrapper(object):
         self.subscribed_callbacks = {}
         self.run = None
 
-    def __exit__(self):
-        """ Just make shure that device will be disconect"""
-        self.adapter.stop()
-
-    def __del__(self):
-        """ Just make shure that device will be disconect"""
+    def disconnect(self):
         self.adapter.stop()
 
     def find(self, connect = False, timeout = 10, device_name = 'IoT'):
@@ -119,7 +114,7 @@ class FoshWrapper(object):
 
     def connect(self, address = ''):
         """
-            Function connect() with paramere address is constructed for 
+            Function connect() with paramere address is constructed for
             connection into ble device
         """
         try:
