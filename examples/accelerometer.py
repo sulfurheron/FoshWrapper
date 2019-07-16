@@ -1,59 +1,42 @@
 from dialog_iot import FoshWrapper
 import time
 import struct
-
+import sys
+import signal
 
 ##subscribed functions
-def accel_1_callback(handle, data):
+def accel_callback(handle, data):
     #ok handle of commands will be store in "handle"
     #and accelerometer data will be store in "data" as bytearray
-    _, sensor_state, sensor_event, x, y, z = struct.unpack('!3B3h', data)
-    print("1-> x:{} y:{} z:{}".format(x, y, z))
+    #_, sensor_state, sensor_event, x, y, z = struct.unpack('!3B3h', data)
+    print("{}-> x:{} y:{} z:{}".format(device_id, float.fromhex(str(data[3])),
+                                                  float.fromhex(str(data[4])),
+                                                  float.fromhex(str(data[5]))))
 
-def accel_2_callback(handle, data):
-    #ok handle of commands will be store in "handle"
-    #and accelerometer data will be store in "data" as bytearray
-    _, sensor_state, sensor_event, x, y, z = struct.unpack('!3B3h', data)
-    print("2-> x:{} y:{} z:{}".format(x, y, z))
-
-#connect to the device
-fosh = FoshWrapper()
-
-#show found devices, without connect
-#if someone wants to connect directly, just connect = True
-devices = fosh.find(device_name='IoT-DK-SFL', timeout=5)
-
-if not devices:
-    print("No Dialog BLE devices found!!!")
-    exit()
-
-#ok connect to the specific device via mac address
-fosh_connections = []
-callbacks = [accel_1_callback, accel_2_callback]
+device_id = str(sys.argv[1])
 
 try:
-    for d in devices:
-        fosh = FoshWrapper()
-        fosh.connect(d['address'])
-        fosh_connections.append(fosh)
+    print("Connecting to {}".format(device_id))
+    fosh = FoshWrapper()
+    fosh.connect(device_id)
 
     #load configuration from Iot device
-    for num, fosh in enumerate(fosh_connections):
-        config = fosh.getConfig()
-        #sensor_combination is accelerometer and Gyroscope
-        fosh.config['sensor_combination'] = 3
-        #accelerometer rate to 100Hz
-        fosh.config['accelerometer_rate'] = 0x08
+    config = fosh.getConfig()
+    #sensor_combination is accelerometer and Gyroscope
+    fosh.config['sensor_combination'] = 3
+    #accelerometer rate to 100Hz
+    fosh.config['accelerometer_rate'] = 0x08
 
-        #if config is not equal to the fosh.config just send it to the device
-        if config != fosh.config:
-            fosh.setConfig()    #set config and also store this configuration in eeprom
-            #fosh.setConfig(False) #set config without storing it in eeprom
+    #if config is not equal to the fosh.config just send it to the device
+    if config != fosh.config:
+        fosh.setConfig()    #set config and also store this configuration in eeprom
+        fosh.setConfig(False) #set config without storing it in eeprom
 
-        #now we wants to get accelerometer data and response will be in f
-        #fosh.subscribe('accelerometer', callbacks[num])
-        #send command for start!!!
-        fosh.start()
+    #now we wants to get accelerometer data and response will be in f
+    fosh.subscribe('accelerometer', accel_callback)
+    #send command for start!!!
+    fosh.start()
+
 
     #ok we have to w8 for accelerometer data which will be
     #in accelerometer_data_callback
@@ -61,10 +44,11 @@ try:
         time.sleep(0.5)
 except Exception as e:
     print(e) #error time :D
-    exit()
+    fosh.disconnect()
+    sys.exit(0)
 except KeyboardInterrupt as ke:
-    print("Disconnecting from BT adapter...")
-    for fosh in fosh_connections:
-        fosh.disconnect()
-    exit()
+    print("\nCleaning up connection on device {}!".format(device_id))
+    fosh.disconnect()
+    sys.exit(0)
+
 
