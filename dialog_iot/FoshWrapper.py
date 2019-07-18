@@ -59,14 +59,14 @@ class FoshWrapper(object):
         For connection is used pygatt library with bluetooth linux library
         bluez which has to be version 5 or gigher!!
     """
-    def __init__(self, log = False):
+    def __init__(self, reset=False, log = False):
         # set logging
         if log:
             logging.basicConfig()
             logging.getLogger('pygatt').setLevel(logging.DEBUG)
         self.device = None
         self.adapter = pygatt.GATTToolBackend()
-        self.adapter.start()
+        self.adapter.start(reset_on_start=reset)
 
         self.reply_buf = {}
         self.config = {  'sensor_combination'    : 7

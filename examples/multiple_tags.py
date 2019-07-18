@@ -5,7 +5,7 @@ import time
 
 try:
   #connect to the device
-  fosh = FoshWrapper()
+  fosh = FoshWrapper(reset=True)
 
   #show found devices, without connect
   #if someone wants to connect directly, just connect = True
