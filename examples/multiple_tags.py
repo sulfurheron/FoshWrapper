@@ -13,8 +13,10 @@ try:
   fosh.disconnect()
 
   if not devices:
-      print("No Dialog BLE devices found!!!")
-      exit()
+    print("No Dialog BLE devices found!!!")
+    exit()
+  else:
+    print("Found {} BLE devices".format(len(devices)))
 
   processes = []
   for device in devices:

@@ -3,6 +3,7 @@ import time
 import struct
 import sys
 import signal
+from statistics import mean
 
 def littleEndianToInt8(data, offset):
     x = littleEndianToUint8(data, offset)
@@ -24,18 +25,23 @@ def accel_callback(handle, data):
     ax = littleEndianToInt16(data, 3) / 4096
     ay = littleEndianToInt16(data, 5) / 4096
     az = littleEndianToInt16(data, 7) / 4096
-    global FIRST_PRINT
+    global FIRST_PRINT, ax_rec, ay_rec, az_rec
     if FIRST_PRINT:
         print("Receiving data from {}".format(device_id))
         FIRST_PRINT = False
-    if abs(ax)>=MOVEMENT_THRESHOLD or abs(ay)>=MOVEMENT_THRESHOLD:
-        print("Device {} is moving".format(device_id))
-    #print("{}-> x:{} y:{} z:{}".format(device_id, ax, ay, az))
+    if abs(ax)>=MOVEMENT_THRESHOLD and abs(ay)>=MOVEMENT_THRESHOLD:
+        print("Device {} is moving".format(MAP[device_id[-2:]]))
+        ax_rec.append(abs(ax))
+        ay_rec.append(abs(ay))
+        az_rec.append(abs(az))
+        #print("{}-> x:{} y:{} z:{}".format(device_id, ax, ay, az))
 
-
-MOVEMENT_THRESHOLD = 1
+MAP={"8B":1, "60":2, "54":3, "ED":4, "9F":5}
+#Averages are ax:3.943337180397727 ay:4.521883877840909 az:4.1067116477272725
+MOVEMENT_THRESHOLD = 3.5
 FIRST_PRINT = True
 device_id = str(sys.argv[1])
+ax_rec, ay_rec, az_rec = [], [], []
 
 try:
     print("Connecting to {}".format(device_id))
@@ -61,7 +67,6 @@ try:
     #send command for start!!!
     fosh.start()
 
-
     #ok we have to w8 for accelerometer data which will be
     #in accelerometer_data_callback
     while True:
@@ -72,7 +77,7 @@ except Exception as e:
     sys.exit(0)
 except KeyboardInterrupt as ke:
     print("\nCleaning up connection on device {}!".format(device_id))
+    #print("Averages are ax:{} ay:{} az:{}".format(mean(ax_rec), mean(ay_rec), mean(az_rec)))
     fosh.disconnect()
     sys.exit(0)
-
 
