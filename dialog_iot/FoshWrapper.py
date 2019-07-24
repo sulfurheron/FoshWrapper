@@ -11,10 +11,36 @@ import pygatt
 from pygatt.exceptions import NotConnectedError, BLEError, NotificationTimeout
 import time
 
+
+SENSOR_COMBINATION = {
+    "gyro": 2,
+    "accel_gyro": 3,
+    "accel_mag": 5,
+    "accel_gyro_mag": 7,
+    "all": 15}
+
+CALIBRATION_MODE = {
+    "none": 0,
+    "static": 1,
+    "continuous": 2,
+    "one_shot": 3}
+
+AUTO_CALIBRATION_MODE = {
+    "basic": 0,
+    "smartfusion": 1}
+
+ACCELEROMETER_RANGE = {
+    "2": 3,
+    "4": 5,
+    "8": 8,
+    "16": 12}
+
+
 #uuids of all characteristics
 _uuids = { 'accelerometer'  : '2ea78970-7d44-44bb-b097-26183f402401'
          , 'gyroscope'      : '2ea78970-7d44-44bb-b097-26183f402402'
          , 'magnetometer'   : '2ea78970-7d44-44bb-b097-26183f402403'
+         , 'barometer'      : '2ea78970-7d44-44bb-b097-26183f402404'
          , 'sensorFusion'   : '2ea78970-7d44-44bb-b097-26183f402407'
          , 'deviceFeatures' : '2ea78970-7d44-44bb-b097-26183f402408'
          , 'controlPoint'   : '2ea78970-7d44-44bb-b097-26183f402409'
