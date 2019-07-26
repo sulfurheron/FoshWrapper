@@ -9,6 +9,7 @@ FoshWrapper
 import logging
 import pygatt
 from pygatt.exceptions import NotConnectedError, BLEError, NotificationTimeout
+import struct
 import time
 
 
@@ -34,6 +35,18 @@ ACCELEROMETER_RANGE = {
     "4": 5,
     "8": 8,
     "16": 12}
+
+GYROSCOPE_RANGE = {
+    "2000": 0,
+    "1000": 1,
+    "500": 2,
+    "250": 3}
+
+GYROSCOPE_SCALE = {
+    0: 16.4,
+    1: 32.8,
+    2: 65.6,
+    3: 131.2}
 
 
 #uuids of all characteristics
@@ -85,13 +98,13 @@ class FoshWrapper(object):
         For connection is used pygatt library with bluetooth linux library
         bluez which has to be version 5 or gigher!!
     """
-    def __init__(self, reset=False, log = False):
+    def __init__(self, reset=False, log=False, hci_device="hci0"):
         # set logging
         if log:
             logging.basicConfig()
             logging.getLogger('pygatt').setLevel(logging.DEBUG)
         self.device = None
-        self.adapter = pygatt.GATTToolBackend()
+        self.adapter = pygatt.GATTToolBackend(hci_device)
         self.adapter.start(reset_on_start=reset)
 
         self.reply_buf = {}
@@ -171,6 +184,16 @@ class FoshWrapper(object):
             self.device.unsubscribe(uuid)
             self.subscribed_uuids.remove(uuid)
             del self.subscribed_callbacks[uuid]
+
+    @classmethod
+    def read_gyroscope_values(cls, data, range):
+        """Read gyroscope values and scale based on range.
+        """
+
+        scale = GYROSCOPE_SCALE[range]
+        x, y, z = struct.unpack("<3xhhh", data)
+        x, y, z = x / scale, y / scale, z / scale
+        return x, y, z
 
     def read(self, uuid_name = ''):
         """

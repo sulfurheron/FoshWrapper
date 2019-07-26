@@ -1,36 +1,58 @@
+from pprint import pprint
 import subprocess
-from dialog_iot import FoshWrapper
-import sys
 import time
 
-try:
-  #connect to the device
-  fosh = FoshWrapper(reset=True)
+from dialog_iot import FoshWrapper
 
-  #show found devices, without connect
-  #if someone wants to connect directly, just connect = True
-  devices = fosh.find(device_name='IoT-DK-SFL', timeout=5)
-  fosh.disconnect()
 
-  if not devices:
-    print("No Dialog BLE devices found!!!")
-    exit()
-  else:
-    print("Found {} BLE devices".format(len(devices)))
+DIALOG_MAC_PREFIX = "80:EA:CA:"
 
-  processes = []
-  for device in devices:
-    cmd = "python -u accelerometer.py " + device['address']
-    p = subprocess.Popen(cmd, shell=True)
-    processes.append(p)
-    print("Connected to {}".format(device['address']))
+procs = {}
 
-  while True:
-    time.sleep(0.5)
 
-except KeyboardInterrupt as ke:
-  print("Killing all processes")
-  for p in processes:
-    p.terminate()
-  sys.exit(0)
+def scan_and_connect():
+    global procs
 
+    fosh = FoshWrapper(reset=True)
+
+    while True:
+        for address, proc in list(procs.items()):
+            proc.poll()
+            if proc.returncode is not None:
+                print("[%s] Removing expired listener." % address)
+                procs.pop(address)
+
+        devices = fosh.find(timeout=5)
+        fosh.disconnect()
+
+        for dev in devices:
+            address = dev["address"]
+            
+            if not address.startswith(DIALOG_MAC_PREFIX):
+                continue
+
+            if address in procs:
+                print("[%s] Found device but already listening." % address)
+                procs[address].terminate()
+            else:
+                print("[%s] Found device we're not yet listening to." % address)
+            
+            cmd = "python -u listener.py " + address
+            p = subprocess.Popen(cmd, shell=True)
+            procs[address] = p
+            print("[%s] Starting listener." % address)
+
+        time.sleep(6)
+
+
+def main():
+    try:
+        scan_and_connect()
+    except KeyboardInterrupt:
+        print("Killing all processes.")
+        for p in procs.values():
+            p.terminate()
+
+
+if __name__ == "__main__":
+    main()

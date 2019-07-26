@@ -5,6 +5,9 @@ import sys
 import signal
 from statistics import mean
 
+ACCELEROMETER_SCALE = 2048
+
+
 def littleEndianToInt8(data, offset):
     x = littleEndianToUint8(data, offset)
     if x & 0x80:
@@ -22,19 +25,20 @@ def accel_callback(handle, data):
     #ok handle of commands will be store in "handle"
     #and accelerometer data will be store in "data" as bytearray
     #_, sensor_state, sensor_event, x, y, z = struct.unpack('!3B3h', data)
-    ax = littleEndianToInt16(data, 3) / 4096
-    ay = littleEndianToInt16(data, 5) / 4096
-    az = littleEndianToInt16(data, 7) / 4096
-    global FIRST_PRINT, ax_rec, ay_rec, az_rec
-    if FIRST_PRINT:
-        print("Receiving data from {}".format(device_id))
-        FIRST_PRINT = False
-    if abs(ax)>=MOVEMENT_THRESHOLD and abs(ay)>=MOVEMENT_THRESHOLD:
-        print("Device {} is moving".format(MAP[device_id[-2:]]))
-        ax_rec.append(abs(ax))
-        ay_rec.append(abs(ay))
-        az_rec.append(abs(az))
-        #print("{}-> x:{} y:{} z:{}".format(device_id, ax, ay, az))
+    x, y, z = struct.unpack("<3xhhh", data)
+    x, y, z = x / ACCELEROMETER_SCALE, y / ACCELEROMETER_SCALE, z / ACCELEROMETER_SCALE
+    magnitude = ((x ** 2) + (y ** 2) + (z ** 2)) ** 0.5
+    print("[%s] %0.2f (%0.2f, %0.2f, %0.2f)" % (device_id, magnitude, x, y, z))
+    # global FIRST_PRINT, ax_rec, ay_rec, az_rec
+    # if FIRST_PRINT:
+    #     print("Receiving data from {}".format(device_id))
+    #     FIRST_PRINT = False
+    # if abs(ax)>=MOVEMENT_THRESHOLD and abs(ay)>=MOVEMENT_THRESHOLD:
+    #     print("Device {} is moving".format(device_id))
+    #     ax_rec.append(abs(ax))
+    #     ay_rec.append(abs(ay))
+    #     az_rec.append(abs(az))
+    #     #print("{}-> x:{} y:{} z:{}".format(device_id, ax, ay, az))
 
 MAP={"8B":1, "60":2, "54":3, "ED":4, "9F":5}
 #Averages are ax:3.943337180397727 ay:4.521883877840909 az:4.1067116477272725

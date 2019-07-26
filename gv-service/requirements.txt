@@ -1,7 +1,7 @@
 enum-compat==0.0.2
--e git+git@github.com:sulfurheron/FoshWrapper.git@d49fe8a0fbadba55f7df6897a80a688bcf955451#egg=FoshIot
+-e git+git@github.com:sulfurheron/FoshWrapper.git@b110d3f11df2a8df964326a6cad8527ab5376841#egg=FoshIot
 grpcio==1.22.0
-gv-stubs==1.0.dev20190721014249
+gv-stubs==1.0.dev20190725204413
 pexpect==4.7.0
 protobuf==3.9.0
 ptyprocess==0.6.0

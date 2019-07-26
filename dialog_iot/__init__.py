@@ -8,4 +8,5 @@ from .FoshWrapper import SENSOR_COMBINATION
 from .FoshWrapper import CALIBRATION_MODE
 from .FoshWrapper import AUTO_CALIBRATION_MODE
 from .FoshWrapper import ACCELEROMETER_RANGE
+from .FoshWrapper import GYROSCOPE_RANGE
 from .FoshWrapper import FoshWrapper

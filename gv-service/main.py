@@ -1,19 +1,28 @@
+"""Implements gRPC sensor service.
+
+Provides a streaming gRPC method that contains all relevant readings
+from all connected sensors.
+"""
+
 import argparse
 import collections
 from concurrent import futures
 import copy
 from datetime import datetime
 from enum import Enum
+import json
 import logging
 import multiprocessing
 import os
-from pprint import pprint
+import pprint
 import queue
+import re
 import struct
+import subprocess
 import time
 import threading
 
-from dialog_iot import FoshWrapper
+import dialog_iot
 from google.protobuf.timestamp_pb2 import Timestamp
 import grpc
 from orb.gv_stubs import gv_stubs_pb2
@@ -36,11 +45,31 @@ DIALOG_MAC_PREFIX = "80:EA:CA:"
 
 
 class Sensor(Enum):
+    """Sensor types.
+    """
+    
     ACCELEROMETER = 1
     BAROMETER = 2
+    GYROSCOPE = 3
+
+
+def get_hci_devices():
+    """Get a list of HCI (typically only Bluetooth) devices.
+    """
+    
+    out = subprocess.check_output(["hcitool", "dev"])
+    return re.findall(r"\t(\w+)\W+.", out.decode("utf-8"))
 
 
 class Scanner(multiprocessing.Process):
+    """Scan and start listeners for all Dialog IoT devices.
+
+    Periodically scans for any available Dialog IoT devices. Any that
+    are found to be available (i.e.: respond to scan as they're not
+    currently connected) will have a listener assigned.
+
+    """
+    
     def __init__(self, timeout_seconds, sensor_queue):
         super().__init__()
 
@@ -48,8 +77,11 @@ class Scanner(multiprocessing.Process):
         self.sensor_queue = sensor_queue
         self.procs = {}
 
+        self.hci_devices = get_hci_devices()
+        self.hci_index = 0
+
     def run(self):
-        fosh = FoshWrapper(reset=True)
+        fosh = dialog_iot.FoshWrapper(hci_device=self.next_hci_device(), reset=True)
 
         try:
             while True:
@@ -58,8 +90,16 @@ class Scanner(multiprocessing.Process):
                         print("[%s] Removing expired listener." % address)
                         self.procs.pop(address)
 
-                devices = fosh.find(timeout=self.timeout_seconds)
-                fosh.disconnect()
+                devices = []
+                try:
+                    devices = fosh.find(timeout=self.timeout_seconds)
+                    fosh.disconnect()
+                except Exception as ex:
+                    logging.error("Exception during scan: %r", ex)
+                    time.sleep(6)
+                    continue
+
+                logging.debug("Scan results, %d devices:\n%s", len(devices), pprint.pformat(devices))
 
                 for dev in devices:
                     address = dev["address"]
@@ -76,7 +116,8 @@ class Scanner(multiprocessing.Process):
                     p = Listener(
                         address=address,
                         timeout_seconds=self.timeout_seconds,
-                        sensor_queue=self.sensor_queue)
+                        sensor_queue=self.sensor_queue,
+                        hci_device=self.next_hci_device())
                     self.procs[address] = p
                     print("[%s] Starting listener." % address)
                     p.start()
@@ -85,6 +126,15 @@ class Scanner(multiprocessing.Process):
         except KeyboardInterrupt:
             pass
 
+    def next_hci_device(self):
+        dev = self.hci_devices[self.hci_index]
+        
+        self.hci_index += 1
+        if self.hci_index == len(self.hci_devices):
+            self.hci_index = 0
+
+        return dev
+
     def cleanup(self):
         print("Killing all processes.")
         for p in self.procs.values():
@@ -92,26 +142,31 @@ class Scanner(multiprocessing.Process):
 
         
 class Listener(multiprocessing.Process):
-    def __init__(self, address, timeout_seconds, sensor_queue):
+    def __init__(self, address, timeout_seconds, sensor_queue, hci_device):
         super().__init__()
 
         self.address = address
         self.timeout_seconds = timeout_seconds
         self.sensor_queue = sensor_queue
+        self.hci_device = hci_device
+
+        self.gyroscope_range = dialog_iot.GYROSCOPE_RANGE["2000"]
         
     def run(self):
         try:
             print("[%s] Connecting." % self.address)
-            fosh = FoshWrapper()
+            fosh = dialog_iot.FoshWrapper(hci_device=self.hci_device)
             fosh.connect(self.address)
 
             config = fosh.getConfig()
             #sensor_combination is accelerometer and Gyroscope
-            fosh.config["sensor_combination"] = 3
+            fosh.config["sensor_combination"] = dialog_iot.SENSOR_COMBINATION["accel_gyro"]
             #accelerometer rate to 100Hz
             fosh.config["accelerometer_rate"] = 0x08
             #accelerometer range to +-8G
-            fosh.config["accelerometer_range"] = 0x08
+            fosh.config["accelerometer_range"] = dialog_iot.ACCELEROMETER_RANGE["8"]
+
+            fosh.config["gyroscope_range"] = self.gyroscope_range
 
             #if config is not equal to the fosh.config just send it to the device
             if config != fosh.config:
@@ -120,6 +175,7 @@ class Listener(multiprocessing.Process):
             #now we wants to get accelerometer data and response will be in f
             fosh.subscribe("accelerometer", self.accelerometer_callback)
             fosh.subscribe("barometer", self.barometer_callback)
+            fosh.subscribe("gyroscope", self.gyroscope_callback)
             #send command for start!!!
             fosh.start()
 
@@ -143,9 +199,16 @@ class Listener(multiprocessing.Process):
         x, y, z = struct.unpack("<3xhhh", data)
         x, y, z = x / ACCELEROMETER_SCALE, y / ACCELEROMETER_SCALE, z / ACCELEROMETER_SCALE
         magnitude = ((x ** 2) + (y ** 2) + (z ** 2)) ** 0.5
-        logging.debug("[%s] %0.2f (%0.2f, %0.2f, %0.2f)" % (self.address, magnitude, x, y, z))
+        # logging.debug("[%s] %0.2f (%0.2f, %0.2f, %0.2f)" % (self.address, magnitude, x, y, z))
         # self.sensor_queue.put((self.address, Sensor.ACCELEROMETER, magnitude))
         self.sensor_queue.put((self.address, Sensor.ACCELEROMETER, (x, y, z)))
+
+    def gyroscope_callback(self, handle, data):
+        self.last_read = datetime.now()
+
+        x, y, z = dialog_iot.FoshWrapper.read_gyroscope_values(data, self.gyroscope_range)
+        magnitude = ((x ** 2) + (y ** 2) + (z ** 2)) ** 0.5
+        self.sensor_queue.put((self.address, Sensor.GYROSCOPE, (x, y, z)))
 
     def barometer_callback(self, handle, data):
         self.last_read = datetime.now()
@@ -196,7 +259,15 @@ class GraspVerificationServicer(gv_stubs_pb2_grpc.GraspVerificationServiceServic
         self.events_lock = threading.Lock()
 
     def add_event(self, event):
-        logging.debug("Adding event: %s.", event)
+        logging.debug(
+            "Adding event with %d devices:\n%s",
+            len(event.device), event)
+        # TODO Add gyroscopes, check on other sensors for usefulness.
+        logging.debug(
+            "Reporting data from %d devices:\n%s",
+            len(event.device),
+            pprint.pformat(sorted([d.address for d in event.device])))
+
         with self.events_lock:
             for event_queue in self._event_queues:
                 event_queue.put_nowait(event)
@@ -244,8 +315,12 @@ def broadcast_events(aggregator, servicer, aggregate_period_seconds):
             if Sensor.BAROMETER in dev_state:
                 response_device.pressure = dev_state[Sensor.BAROMETER]
 
-        servicer.add_event(event)
+            if Sensor.GYROSCOPE in dev_state:
+                response_device.gyroscope.x = dev_state[Sensor.GYROSCOPE][0]
+                response_device.gyroscope.y = dev_state[Sensor.GYROSCOPE][1]
+                response_device.gyroscope.z = dev_state[Sensor.GYROSCOPE][2]
 
+        servicer.add_event(event)
 
 
 def _get_env(name, cast):
