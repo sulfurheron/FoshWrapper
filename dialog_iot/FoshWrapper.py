@@ -179,7 +179,7 @@ class FoshWrapper(object):
         """
             Unsubscribe communication with uuid
         """
-        uuid = _uuids[uuid]
+        uuid = _uuids[uuid_name]
         if uuid in self.subscribed_uuids:
             self.device.unsubscribe(uuid)
             self.subscribed_uuids.remove(uuid)
